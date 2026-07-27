@@ -3,11 +3,10 @@
 <title>Airteam Flatrate-Rechner</title>
 <style>
   * { box-sizing: border-box; } html, body { margin: 0; padding: 0; }
-  /* Fallback-Schrift für die Standalone-Datei. Im Webflow-Embed erbt der Rechner die Hausschrift. */
   body { font-family: "Interface", Arial, sans-serif; }
   input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   input[type=number] { -moz-appearance: textfield; }
-  button:focus-visible, input:focus-visible { outline: 2px solid #0E6B50; outline-offset: 2px; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #0E6B50; outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style></head>
 <body><div id="root"></div>
@@ -411,6 +410,45 @@ const TIERS = [
   personalContact: true,
   extraUserAllowed: false
 }];
+
+// =================================================================
+//  STRIPE-CHECKOUT-LINKS je Tier und Zahlweise
+//  Fehlt ein Link (null), zeigt der Button stattdessen "Demo buchen".
+//  Sobald neue Links kommen: hier eintragen, Logik bleibt unverändert.
+// =================================================================
+const DEMO_URL = "https://www.airteam.ai/demo";
+const STRIPE_LINKS = {
+  base: {
+    monthly: "https://buy.stripe.com/9B69AU0AX1WV0p9c3jdAk1b",
+    annual: "https://buy.stripe.com/fZubJ297t9pn4Fp4ARdAk1c",
+    biennial: "https://buy.stripe.com/6oUfZifvRgRPgo7d7ndAk1d"
+  },
+  fast: {
+    monthly: null,
+    annual: null,
+    biennial: null
+  },
+  // folgt
+  pro: {
+    monthly: null,
+    annual: null,
+    biennial: null
+  },
+  // folgt
+  max: {
+    monthly: null,
+    annual: null,
+    biennial: null
+  } // folgt
+  // ultra: kein Stripe-Produkt – immer individuelles Angebot
+};
+
+// Liefert den passenden Kauf-Link (oder null, wenn noch keiner hinterlegt)
+function checkoutLinkFor(tierId, billing) {
+  const t = STRIPE_LINKS[tierId];
+  if (!t) return null;
+  return t[billing] || null;
+}
 const ADDONS = [{
   key: "solarSimple",
   label: "Solardaten – PV*SOL, Solar Monkey, SMA",
@@ -1078,6 +1116,10 @@ function AirteamFlatrateRechner() {
     showBreakdown: true,
     r: results.cheapest,
     C: C
+  }), /*#__PURE__*/React.createElement(KaufBlock, {
+    r: results.cheapest,
+    billing: billing,
+    C: C
   }), results.cheapest && results.cheapest.needsPrebook && results.cheapest.overflowUnbookedCost > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#FEF6E6",
@@ -1577,6 +1619,117 @@ function ToggleRow({
       color: C.mute
     }
   }, "\u2013 ", hint)));
+}
+function KaufBlock({
+  r,
+  billing,
+  C
+}) {
+  if (!r) return null;
+  const billingWord = billing === "monthly" ? "im Monatsabo" : billing === "annual" ? "im 1-Jahres-Abo" : "im 2-Jahres-Abo";
+
+  // Ultra (individuell) oder ein Tier, das ein Vorab-Bundle braucht → kein Einzel-Checkout
+  if (r.isCustom || r.needsPrebook) {
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: C.greenTint,
+        borderRadius: 16,
+        border: `1px solid ${C.green}`,
+        padding: 24,
+        textAlign: "center"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 17,
+        fontWeight: 800,
+        color: C.ink,
+        marginBottom: 4
+      }
+    }, "F\xFCr diese Konfiguration erstellen wir dir ein individuelles Angebot"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 14,
+        color: C.grey,
+        marginBottom: 18
+      }
+    }, "Deine Zusammenstellung l\xE4sst sich am besten pers\xF6nlich abstimmen \u2013 wir melden uns mit einem passenden Angebot."), /*#__PURE__*/React.createElement("a", {
+      href: DEMO_URL,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      style: {
+        display: "inline-block",
+        background: C.ink,
+        color: C.white,
+        textDecoration: "none",
+        borderRadius: 14,
+        padding: "16px 28px",
+        fontSize: 16,
+        fontWeight: 800
+      }
+    }, "Angebot anfordern \u2192"));
+  }
+  const link = checkoutLinkFor(r.tier.id, billing);
+
+  // Kauf-Link vorhanden → direkter Stripe-Checkout
+  if (link) {
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: C.ink,
+        borderRadius: 16,
+        padding: 24,
+        textAlign: "center"
+      }
+    }, /*#__PURE__*/React.createElement("a", {
+      href: link,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      style: {
+        display: "inline-block",
+        background: C.green,
+        color: C.ink,
+        textDecoration: "none",
+        borderRadius: 14,
+        padding: "18px 32px",
+        fontSize: 18,
+        fontWeight: 900
+      }
+    }, "Jetzt ", r.tier.name, " Flatrate kaufen \u2192"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 13,
+        color: "#B9BDBF",
+        marginTop: 12
+      }
+    }, "Du kaufst die ", r.tier.name, " Flatrate ", billingWord, ". Der Kauf wird sicher \xFCber Stripe abgewickelt."));
+  }
+
+  // Kein Kauf-Link hinterlegt (Fast/Pro/Max folgen) → Demo buchen
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.ink,
+      borderRadius: 16,
+      padding: 24,
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("a", {
+    href: DEMO_URL,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    style: {
+      display: "inline-block",
+      background: C.green,
+      color: C.ink,
+      textDecoration: "none",
+      borderRadius: 14,
+      padding: "18px 32px",
+      fontSize: 18,
+      fontWeight: 900
+    }
+  }, "Demo buchen \u2192"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#B9BDBF",
+      marginTop: 12
+    }
+  }, "F\xFCr die ", r.tier.name, " vereinbaren wir gern eine kurze Demo und richten dein Paket pers\xF6nlich ein."));
 }
 function RecCard({
   label,
