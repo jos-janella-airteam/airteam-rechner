@@ -4,6 +4,7 @@
 <style>
   * { box-sizing: border-box; } html, body { margin: 0; padding: 0; }
   body { font-family: "Interface", Arial, sans-serif; }
+  html { overflow-anchor: none; }
   input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   input[type=number] { -moz-appearance: textfield; }
   button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #0E6B50; outline-offset: 2px; }
@@ -335,7 +336,7 @@ const TIERS = [
   annual: 750,
   biennial: 1425,
   bundleSize: 3,
-  bundlePrice: 75,
+  bundlePrice: 62,
   extraCreditPrice: 27.08,
   users: 1,
   extraUserPrice: 25,
@@ -351,7 +352,7 @@ const TIERS = [
   annual: 1750,
   biennial: 3325,
   bundleSize: 10,
-  bundlePrice: 175,
+  bundlePrice: 145,
   extraCreditPrice: 18.96,
   users: 1,
   extraUserPrice: 25,
@@ -367,7 +368,7 @@ const TIERS = [
   annual: 4000,
   biennial: 7600,
   bundleSize: 30,
-  bundlePrice: 400,
+  bundlePrice: 333,
   extraCreditPrice: 14.44,
   users: 5,
   extraUserPrice: 25,
@@ -384,7 +385,7 @@ const TIERS = [
   annual: 10000,
   biennial: 19000,
   bundleSize: 100,
-  bundlePrice: 1000,
+  bundlePrice: 925,
   extraCreditPrice: 10.83,
   users: 25,
   extraUserPrice: 25,
@@ -451,14 +452,14 @@ function checkoutLinkFor(tierId, billing) {
 }
 const ADDONS = [{
   key: "solarSimple",
-  label: "Solardaten – PV*SOL, Solar Monkey, SMA",
+  label: "Solardaten – LPM, Solar Monkey, SMA",
   hint: "Standard-Solarformate",
   credits: 1,
   isSolar: true,
   minTierIdx: 1
 }, {
   key: "solarComplex",
-  label: "Solardaten – Eturnity, PV Case, planarisiert",
+  label: "Solardaten – Eturnity, PV Case, PV*SOL planarisiert",
   hint: "erweiterte Solarformate",
   credits: 3,
   isSolar: true,
@@ -498,12 +499,20 @@ const BILLING = [{
 }, {
   id: "annual",
   label: "1 Jahr",
-  note: "günstiger"
+  note: null
 }, {
   id: "biennial",
   label: "2 Jahre",
-  note: "am günstigsten"
+  note: null
 }];
+// Errechnet die echte Ersparnis ggü. monatlicher Zahlung für den übergebenen Tarif.
+// Ersetzt statische Wertungen wie "günstiger"/"am günstigsten", die mit der
+// separaten "günstigste Lösung"-Tarifempfehlung kollidieren würden.
+function billingDiscountNote(tier, billingId, fallback) {
+  if (!tier || billingId === "monthly") return fallback;
+  const pct = Math.round((1 - baseMonthlyFor(tier, billingId) / tier.monthly) * 100);
+  return pct > 0 ? `\u2212${pct}\xA0% ggü. monatlich` : fallback;
+}
 const euro = n => new Intl.NumberFormat("de-DE", {
   style: "currency",
   currency: "EUR",
@@ -522,6 +531,10 @@ function baseMonthlyFor(tier, billing) {
 }
 function computeTier(tier, st, billing) {
   const tierIdx = TIERS.findIndex(t => t.id === tier.id);
+  // Vertragslänge in Monaten – wird für den Bundle-Bedarf gebraucht, deshalb schon hier bestimmt.
+  const contractMonths = billing === "monthly" ? 1 : billing === "annual" ? 12 : 24;
+  const contractLabel = billing === "monthly" ? "pro Monat" : billing === "annual" ? "für 1 Jahr im Voraus" : "für 2 Jahre im Voraus";
+  const isMonthlyBilling = billing === "monthly";
   const creditsPerProjectBase = Math.ceil(st.avgSizeSqm / 1000) || 1;
   let addonCredits = 0;
   let addonNotAvailable = false; // wird true, wenn ein genutzter Zusatzdatentyp in diesem Tier nicht verfügbar ist
@@ -539,7 +552,9 @@ function computeTier(tier, st, billing) {
     }
   }
   const creditsPerProject = creditsPerProjectBase + addonCredits;
-  const totalCredits = creditsPerProject * st.projectsPerMonth;
+  // Credits werden immer als ganze Einheiten verbraucht – der Monatsbedarf wird deshalb aufgerundet
+  // und ist damit auch die Basis für die Bundle-Berechnung unten (nicht die Kommazahl).
+  const totalCredits = Math.ceil(creditsPerProject * st.projectsPerMonth);
   const modelCreditsTotal = creditsPerProjectBase * st.projectsPerMonth; // Credits nur fürs 3D-Modell
 
   // Individuelles Paket (Ultra): Mindestbedarf 200 Credits, Preis = max(Bedarf, 200) × Standard-Creditpreis
@@ -549,7 +564,6 @@ function computeTier(tier, st, billing) {
     prebookedBundles = 0,
     prebookedCost = 0;
   let customBelowMinimum = false;
-  let tooManyBundles = false; // mehr als 1 Bundle nötig → Tier scheidet aus (sauberer Tier-Wechsel bevorzugt)
   if (isCustom) {
     const MIN_CREDITS = 200;
     if (totalCredits < MIN_CREDITS) customBelowMinimum = true;
@@ -557,35 +571,34 @@ function computeTier(tier, st, billing) {
     base = billedCredits * tier.standardCreditPrice;
   } else {
     base = baseMonthlyFor(tier, billing);
-    // Deckt das Standard-Kontingent den Bedarf nicht, wird höchstens EIN Vorab-Bundle als Brücke zugekauft.
-    // Braucht das Tier mehr als 1 Bundle, um den Bedarf zu decken, scheidet es aus – dann ist das
-    // nächsthöhere Tier die sauberere Wahl (verhindert "Fast + 3 Bundles"-Preissprünge).
-    const shortfall = Math.max(0, totalCredits - tier.credits);
-    if (shortfall > 0) {
-      const bundlesNeeded = Math.ceil(shortfall / tier.bundleSize);
-      if (bundlesNeeded > 1) {
-        tooManyBundles = true;
-      } else {
-        prebookedBundles = 1;
-        prebookedCredits = tier.bundleSize;
-        prebookedCost = tier.bundlePrice;
-      }
+    // Vorab-Credit-Bundles (Upgrade Credits) sind ein einmaliger Kauf, gültig für die gesamte
+    // gewählte Vertragslaufzeit – nicht pro Monat. Deshalb wird der Bedarf über die ganze
+    // Laufzeit gerechnet (Monatsbedarf × Vertragsmonate) und nicht nur für einen Monat.
+    // Reicht 1 Bundle nicht, werden so viele gekauft wie nötig (keine künstliche Obergrenze).
+    const creditsNeededTotal = totalCredits * contractMonths;
+    const creditsIncludedTotal = tier.credits * contractMonths;
+    const shortfallTotal = Math.max(0, creditsNeededTotal - creditsIncludedTotal);
+    if (shortfallTotal > 0) {
+      const bundlesNeeded = Math.ceil(shortfallTotal / tier.bundleSize);
+      prebookedBundles = bundlesNeeded;
+      prebookedCredits = bundlesNeeded * tier.bundleSize;
+      prebookedCost = bundlesNeeded * tier.bundlePrice; // einmalig für die gesamte Laufzeit
     }
   }
-  // Gesamtes verfügbares Kontingent nach evtl. Vorab-Buchung
-  const includedCredits = isCustom ? Math.max(totalCredits, 200) : tier.credits + prebookedCredits;
-  // Übernutzung = was selbst nach Vorab-Buchung noch fehlt (sollte 0 sein, da Bundles aufrunden) –
-  // dient nur als Hinweis, falls der Kunde KEINE Vorab-Credits bucht und über das Standard-Kontingent läuft.
+  // Gesamtes verfügbares Kontingent nach evtl. Vorab-Buchung (auf die Laufzeit bezogen bei Bundle-Käufen)
+  const includedCredits = isCustom ? Math.max(totalCredits, 200) : tier.credits + Math.floor(prebookedCredits / contractMonths);
+  // Übernutzung = was ohne Vorab-Buchung über das monatliche Standard-Kontingent hinausgeht –
+  // dient nur als Hinweis für den "Gut zu wissen"-Kasten (Kosten bei Nachberechnung ohne Bundle-Kauf).
   const overflowUnbooked = Math.max(0, totalCredits - tier.credits);
   const overflowUnbookedCost = isCustom ? 0 : overflowUnbooked * tier.extraCreditPrice;
   let feature = 0;
   const notes = [];
-  const costLines = []; // { label, amount } – nur Positionen mit Aufpreis bzw. Grundpaket
+  const costLines = []; // { label, amount } – wiederkehrende Positionen (Grundpaket, Nutzer, Features)
+  const oneTimeLines = []; // { label, amount } – einmalige Positionen (Vorab-Bundles bei Jahres-/2-Jahres-Zahlung)
   const inclLines = []; // inkludierte Leistungen (0€)
   const infoLines = []; // reine Info-Hinweise (z.B. Quality Check, Beta-Features)
   let disqualified = false;
   if (customBelowMinimum) disqualified = true;
-  if (tooManyBundles) disqualified = true; // mehr als 1 Vorab-Bundle nötig → nächsthöheres Tier ist sauberer
   if (addonNotAvailable) disqualified = true; // genutzter Zusatzdatentyp in diesem Tier nicht verfügbar
 
   // Grundpaket / Basis
@@ -600,10 +613,15 @@ function computeTier(tier, st, billing) {
       amount: base
     });
   }
-  if (prebookedCost > 0) costLines.push({
-    label: `${prebookedCredits} Extra-Credits vorab (${prebookedBundles}× ${tier.bundleSize}er-Paket)`,
-    amount: prebookedCost
-  });
+  if (prebookedCost > 0) {
+    const bundleLine = {
+      label: `${prebookedCredits} Extra-Credits vorab (${prebookedBundles}× ${tier.bundleSize}er-Paket)`,
+      amount: prebookedCost
+    };
+    // Bei monatlicher Zahlung erneuert sich der Bedarf jeden Monat neu → wiederkehrend.
+    // Bei Jahres-/2-Jahres-Zahlung deckt der einmalige Bundle-Kauf die ganze Laufzeit ab.
+    if (isMonthlyBilling) costLines.push(bundleLine);else oneTimeLines.push(bundleLine);
+  }
   const extraUsers = Math.max(0, st.users - tier.users);
   if (extraUsers > 0 && tier.users !== Infinity) {
     if (tier.extraUserAllowed === false) disqualified = true;else {
@@ -644,28 +662,29 @@ function computeTier(tier, st, billing) {
 
   // Human Quality Check: Info-Hinweis bei Base (kein Preis-/Credit-Effekt)
   if (!tier.humanQC) infoLines.push("Ohne manuellen Quality Check – dafür extra schnell (3D-Modell in ~2 Std.), höhere Toleranzen möglich");
-  const totalMonthly = base + prebookedCost + feature;
-  const costPerProject = st.projectsPerMonth > 0 ? totalMonthly / st.projectsPerMonth : 0;
+  // totalMonthly ist die WIEDERKEHRENDE monatliche Rate. Bundle-Kosten stecken hier nur bei
+  // monatlicher Zahlung drin (siehe oben); bei Jahres-/2-Jahres-Zahlung sind sie einmalig
+  // und stehen nur in oneTimeLines bzw. im Vertrags-Gesamtpreis unten.
+  const totalMonthly = base + feature + (isMonthlyBilling ? prebookedCost : 0);
 
-  // Gesamtbetrag der gewählten Laufzeit (Einmalzahlung upfront)
-  let contractTotal, contractMonths, contractLabel;
-  if (billing === "monthly") {
-    contractMonths = 1;
-    contractLabel = "pro Monat";
-  } else if (billing === "annual") {
-    contractMonths = 12;
-    contractLabel = "für 1 Jahr im Voraus";
-  } else {
-    contractMonths = 24;
-    contractLabel = "für 2 Jahre im Voraus";
-  }
-  contractTotal = totalMonthly * contractMonths;
+  // Gesamtbetrag der gewählten Laufzeit (Einmalzahlung upfront): wiederkehrende Rate × Monate
+  // + einmalige Bundle-Kosten (nur bei Jahres-/2-Jahres-Zahlung, sonst schon in totalMonthly enthalten)
+  const contractTotal = isMonthlyBilling ? totalMonthly * contractMonths : (base + feature) * contractMonths + prebookedCost;
+  // costPerProject dient NUR dem internen Tarif-Vergleich (welcher Tarif ist "günstigste Lösung") –
+  // muss deshalb den ECHTEN Gesamtpreis inkl. anteiliger Bundle-Kosten widerspiegeln, sonst werden
+  // einmalige Bundle-Kosten beim Vergleich unsichtbar und ein eigentlich teurerer Tarif könnte
+  // fälschlich als günstigster erscheinen (z.B. viele kleine Bundles bei einem niedrigen Tarif vs.
+  // ein höherer Tarif ganz ohne Bundle-Bedarf). totalMonthly/contractTotal (für die ANZEIGE) bleiben
+  // unverändert – dort soll das Bundle weiterhin einmalig/separat ausgewiesen werden.
+  const effectiveMonthly = contractTotal / contractMonths;
+  const costPerProject = st.projectsPerMonth > 0 ? effectiveMonthly / st.projectsPerMonth : 0;
   return {
     tier,
     base,
     feature,
     notes,
     totalMonthly,
+    effectiveMonthly,
     costPerProject,
     totalCredits,
     creditsPerProject,
@@ -678,6 +697,7 @@ function computeTier(tier, st, billing) {
     overflowUnbooked,
     overflowUnbookedCost,
     costLines,
+    oneTimeLines,
     inclLines,
     infoLines,
     contractTotal,
@@ -776,6 +796,9 @@ function AirteamFlatrateRechner() {
     const savingYear = savingMonth * 12;
     const projectsToBreakEven = savingPerProject > 0 ? Math.ceil(r.totalMonthly / savingPerProject) : null;
     const hoursSavedMonth = hours * st.projectsPerMonth;
+    // Geld-Ersparnis nur als Zahl zeigen, wenn sie wirklich ins Gewicht fällt –
+    // sonst wirkt eine Fast-Null-Zahl neben "9 Stunden gespart" schwach/unglaubwürdig.
+    const moneySavingIsMeaningful = manualPerProject > 0 && savingPerProject / manualPerProject > 0.15;
     return {
       manualPerProject,
       airteamPerProject: r.costPerProject,
@@ -785,7 +808,8 @@ function AirteamFlatrateRechner() {
       projectsToBreakEven,
       officeHours,
       hours,
-      hoursSavedMonth
+      hoursSavedMonth,
+      moneySavingIsMeaningful
     };
   }, [manual, results, st.projectsPerMonth]);
   return /*#__PURE__*/React.createElement("div", {
@@ -1042,18 +1066,18 @@ function AirteamFlatrateRechner() {
     style: {
       textAlign: "right"
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, results.cheapest.isCustom ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 18,
+      fontWeight: 800,
+      color: C.green
+    }
+  }, "Individuelles Angebot") : /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 24,
       fontWeight: 900
     }
-  }, results.cheapest.isCustom && /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 14,
-      fontWeight: 600,
-      color: C.green
-    }
-  }, "ab "), euro(results.cheapest.totalMonthly), /*#__PURE__*/React.createElement("span", {
+  }, euro(results.cheapest.effectiveMonthly), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
       fontWeight: 600,
@@ -1065,7 +1089,12 @@ function AirteamFlatrateRechner() {
       color: "#B9BDBF"
     }
   }, "\xE4ndert sich live mit deinen Eingaben"))), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setStep(2),
+    onClick: () => {
+      setStep(2);
+      window.scrollTo(0, 0);
+      if (window.__airteamReportNow) window.__airteamReportNow();
+      if (window.__airteamRequestScrollTop) window.__airteamRequestScrollTop();
+    },
     style: {
       background: C.green,
       color: C.ink,
@@ -1095,11 +1124,12 @@ function AirteamFlatrateRechner() {
     onClick: () => setBilling(b.id),
     style: {
       flex: 1,
+      minHeight: 44,
       padding: "12px 6px",
       borderRadius: 10,
-      border: `1px solid ${billing === b.id ? C.ink : C.line}`,
-      background: billing === b.id ? C.ink : C.white,
-      color: billing === b.id ? C.white : C.ink,
+      border: `2px solid ${billing === b.id ? C.green : C.line}`,
+      background: billing === b.id ? C.green : C.white,
+      color: C.ink,
       cursor: "pointer",
       fontWeight: 700,
       fontSize: 14
@@ -1107,146 +1137,74 @@ function AirteamFlatrateRechner() {
   }, b.label, /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11,
-      fontWeight: 500,
-      opacity: 0.85
+      fontWeight: 600,
+      color: billing === b.id ? C.greenText : C.mute
     }
-  }, b.note))))), /*#__PURE__*/React.createElement(RecCard, {
+  }, billingDiscountNote(results.cheapest && results.cheapest.tier, b.id, b.note)))))), /*#__PURE__*/React.createElement(RecCard, {
     label: "G\xFCnstigste L\xF6sung",
     highlight: true,
     showBreakdown: true,
     r: results.cheapest,
     C: C
-  }), /*#__PURE__*/React.createElement(KaufBlock, {
-    r: results.cheapest,
-    billing: billing,
-    C: C
-  }), results.cheapest && results.cheapest.needsPrebook && results.cheapest.overflowUnbookedCost > 0 && /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#FEF6E6",
+      background: C.white,
+      border: `1px solid ${C.line}`,
       borderRadius: 16,
-      border: `1px solid ${C.yellow}55`,
-      padding: 20
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: C.yellowText,
-      fontWeight: 700
-    }
-  }, "Gut zu wissen:"), " Im Preis oben sind ", results.cheapest.prebookedCredits, " vorab gebuchte Extra-Credits enthalten. Buchst du sie ", /*#__PURE__*/React.createElement("b", null, "nicht"), " vorab und \xFCberziehst dein Kontingent, berechnen wir die Mehrnutzung nachtr\xE4glich mit ", euroCents(results.cheapest.tier.extraCreditPrice), " pro Credit \u2013 deutlich teurer. Mit der Option \u201Eohne Nachzahl-Risiko\" unten umgehst du das ganz."), results.safe && /*#__PURE__*/React.createElement(RecCard, {
-    label: "Ohne Nachzahl-Risiko",
-    showBreakdown: true,
-    r: results.safe,
-    C: C,
-    subnote: "Das Standard-Kontingent dieser Flatrate deckt deinen Bedarf komplett ab \u2013 kein Vorab-Zukauf, keine Nachberechnung."
-  }), results.ultra && /*#__PURE__*/React.createElement(RecCard, {
-    label: "F\xFCr Vielnutzer",
-    showBreakdown: true,
-    r: results.ultra,
-    C: C,
-    subnote: "Bei deinem Volumen oft die rundere Wahl: viel Spielraum nach oben, der g\xFCnstigste Preis je Modell und unbegrenzte Nutzer."
-  }), (results.cheapest?.isCustom || results.ultra?.isCustom) && /*#__PURE__*/React.createElement("div", {
-    style: {
-      background: "#FEF6E6",
-      borderRadius: 16,
-      border: `1px solid ${C.yellow}55`,
-      padding: 20
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: C.yellowText,
-      fontWeight: 700
-    }
-  }, "Hinweis zur Ultra Fusion:"), " Der angezeigte Preis ist eine unverbindliche Indikation auf Basis deines Bedarfs. Die Ultra Fusion bieten wir ausschlie\xDFlich als individuelles Paket an und stimmen die Konditionen immer pers\xF6nlich mit dir ab."), /*#__PURE__*/React.createElement("div", {
-    style: {
-      background: C.ink,
-      color: C.white,
-      borderRadius: 16,
-      padding: 24
+      padding: "24px 24px 22px"
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: 700,
       letterSpacing: 1,
       textTransform: "uppercase",
-      color: C.green
+      color: C.mute
     }
   }, "Was bringt dir das gegen\xFCber Handaufma\xDF?"), /*#__PURE__*/React.createElement("div", {
     style: {
-      marginTop: 18,
-      marginBottom: 4
+      display: "flex",
+      alignItems: "baseline",
+      gap: 10,
+      flexWrap: "wrap",
+      marginTop: 14
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: 44,
+      fontSize: "clamp(34px, 9vw, 48px)",
       fontWeight: 900,
-      lineHeight: 1
+      lineHeight: 1,
+      color: C.ink
     }
-  }, Math.round(roi.hoursSavedMonth), " Stunden"), /*#__PURE__*/React.createElement("div", {
+  }, Math.round(roi.hoursSavedMonth), "\xA0Std"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 15,
-      color: C.green,
-      marginTop: 4
-    }
-  }, "sparst du jeden Monat")), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 17,
       fontWeight: 700,
-      marginTop: 14,
-      color: "#D9DBDC"
+      color: C.greenText,
+      background: C.greenTint,
+      borderRadius: 20,
+      padding: "5px 12px"
     }
-  }, "Das sind rund ", euro(roi.savingMonth), " pro Monat", /*#__PURE__*/React.createElement("span", {
+  }, "pro Monat gespart")), roi.moneySavingIsMeaningful && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontWeight: 500,
-      color: C.mute
+      fontSize: 15,
+      fontWeight: 600,
+      color: C.grey,
+      marginTop: 10
     }
-  }, " \xB7 ", euro(roi.savingYear), " im Jahr")), /*#__PURE__*/React.createElement("div", {
+  }, "entspricht rund ", /*#__PURE__*/React.createElement("b", {
     style: {
-      display: "flex",
-      gap: 24,
-      marginTop: 22,
-      paddingTop: 18,
-      borderTop: `1px solid #3A4042`
+      color: C.ink
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, euro(roi.savingMonth), " Personalkosten"), " im Monat"), /*#__PURE__*/React.createElement("div", {
     style: {
-      flex: 1
+      fontSize: 14,
+      color: C.mute,
+      marginTop: roi.moneySavingIsMeaningful ? 6 : 10,
+      paddingTop: 14,
+      borderTop: `1px solid ${C.line}`
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 13,
-      color: C.green
-    }
-  }, "Aufma\xDF von Hand"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 22,
-      fontWeight: 800
-    }
-  }, euro(roi.manualPerProject), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 13,
-      fontWeight: 500
-    }
-  }, " / Aufma\xDF"))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      flex: 1
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 13,
-      color: C.green
-    }
-  }, "Mit Airteam"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 22,
-      fontWeight: 800
-    }
-  }, euro(roi.airteamPerProject), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 13,
-      fontWeight: 500
-    }
-  }, " / Aufma\xDF"))))), /*#__PURE__*/React.createElement(Section, {
+  }, "Sei anderen einen Schritt voraus \u2013 und verschaff dir mehr Zeit im Tagesgesch\xE4ft.")), /*#__PURE__*/React.createElement(Section, {
     C: C
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowManual(v => !v),
@@ -1259,7 +1217,7 @@ function AirteamFlatrateRechner() {
       fontSize: 15,
       padding: 0
     }
-  }, showManual ? "▾" : "▸", " Womit rechnen wir? (anpassbar)"), showManual && /*#__PURE__*/React.createElement("div", {
+  }, showManual ? "▾" : "▸", " Annahmen \xE4ndern & neu berechnen"), showManual && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 16,
       display: "flex",
@@ -1313,8 +1271,125 @@ function AirteamFlatrateRechner() {
     })),
     step: 0.5,
     C: C
-  }))), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setStep(1),
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 16,
+      marginTop: 4,
+      paddingTop: 14,
+      borderTop: `1px solid ${C.line}`,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: "1 1 140px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: C.mute
+    }
+  }, "Aufma\xDF von Hand"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 18,
+      fontWeight: 800,
+      color: C.ink
+    }
+  }, euro(roi.manualPerProject), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 500,
+      color: C.mute
+    }
+  }, " / Aufma\xDF"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: "1 1 140px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: C.mute
+    }
+  }, "Mit Airteam"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 18,
+      fontWeight: 800,
+      color: C.greenText
+    }
+  }, euro(roi.airteamPerProject), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 500,
+      color: C.mute
+    }
+  }, " / Aufma\xDF")))))), /*#__PURE__*/React.createElement(KaufBlock, {
+    r: results.cheapest,
+    billing: billing,
+    C: C
+  }), results.cheapest && results.cheapest.needsPrebook && results.cheapest.overflowUnbookedCost > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.greenTint,
+      borderRadius: 16,
+      border: `1px solid ${C.green}`,
+      padding: 20
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.greenText,
+      fontWeight: 700
+    }
+  }, "Gut zu wissen:"), " Oben sind ", results.cheapest.prebookedCredits, " vorab gebuchte Extra-Credits eingerechnet (", results.cheapest.contractMonths > 1 ? "einmalig f\xFCr die gesamte Laufzeit" : "monatlich", "). Du bist damit nicht festgelegt: Reicht dir das im Nachhinein nicht, kannst du jederzeit \xFCber diesen Rechner nachrechnen und weitere Credits vorab dazubuchen \u2013 oder dich kostenlos von unserem Team beraten lassen. Teuer wird es nur, wenn du gar ", /*#__PURE__*/React.createElement("b", null, "nichts"), " vorab buchst und dein Kontingent einfach \xFCberziehst: Dann berechnen wir die Mehrnutzung nachtr\xE4glich mit ", euroCents(results.cheapest.tier.extraCreditPrice), " pro Credit \u2013 deutlich teurer. Mit der Option \u201Eohne Nachzahl-Risiko\" unten umgehst du das von Anfang an."), results.safe && /*#__PURE__*/React.createElement(RecCard, {
+    label: "Ohne Nachzahl-Risiko",
+    showBreakdown: true,
+    r: results.safe,
+    C: C,
+    subnote: "Das Standard-Kontingent dieser Flatrate deckt deinen Bedarf komplett ab \u2013 kein Vorab-Zukauf, keine Nachberechnung."
+  }), results.ultra && /*#__PURE__*/React.createElement(RecCard, {
+    label: "F\xFCr Vielnutzer",
+    showBreakdown: true,
+    r: results.ultra,
+    C: C,
+    subnote: "Bei deinem Volumen oft die rundere Wahl: viel Spielraum nach oben, der g\xFCnstigste Preis je Modell und unbegrenzte Nutzer."
+  }), (results.cheapest?.isCustom || results.ultra?.isCustom) && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.white,
+      borderRadius: 16,
+      border: `1px solid ${C.green}`,
+      padding: 20,
+      display: "flex",
+      gap: 12,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: 20,
+      height: 20,
+      borderRadius: "50%",
+      background: C.green,
+      color: C.ink,
+      fontWeight: 900,
+      fontSize: 13,
+      flexShrink: 0,
+      marginTop: 1
+    }
+  }, "!"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.ink
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700
+    }
+  }, "Hinweis zur Ultra Fusion:"), " Ab 200 Credits/Monat bieten wir die Ultra Fusion ausschlie\xDFlich als individuelles Angebot an \u2013 ohne Fixpreis. Wir stimmen die Konditionen immer pers\xF6nlich mit dir ab.")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setStep(1);
+      window.scrollTo(0, 0);
+      if (window.__airteamReportNow) window.__airteamReportNow();
+      if (window.__airteamRequestScrollTop) window.__airteamRequestScrollTop();
+    },
     style: {
       background: C.white,
       color: C.ink,
@@ -1382,6 +1457,13 @@ function NumberControl({
   suffix,
   C
 }) {
+  // Lokaler Text-State: das Feld darf beim Tippen leer sein / Zwischenzustände zeigen
+  // (z.B. beim Ersetzen einer vorbelegten Zahl), ohne sofort auf `min` zurückzuspringen.
+  // Geclampt wird erst beim Verlassen des Felds (onBlur) bzw. sobald eine gültige Zahl steht.
+  const [text, setText] = React.useState(String(value));
+  React.useEffect(() => {
+    setText(String(value));
+  }, [value]); // von außen (+/- Buttons, andere Regler) synchron halten
   return /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -1398,7 +1480,7 @@ function NumberControl({
       overflow: "hidden"
     }
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => onChange(value - step),
+    onClick: () => onChange(clamp(value - step, min, max)),
     style: {
       width: 48,
       height: 52,
@@ -1411,11 +1493,21 @@ function NumberControl({
     }
   }, "\u2212"), /*#__PURE__*/React.createElement("input", {
     type: "number",
-    value: value,
+    value: text,
     min: min,
     max: max,
     step: step,
-    onChange: e => onChange(e.target.value === "" ? min : +e.target.value),
+    onChange: e => {
+      const raw = e.target.value;
+      setText(raw);
+      if (raw !== "" && !Number.isNaN(+raw)) onChange(clamp(+raw, min, max));
+    },
+    onBlur: e => {
+      const raw = e.target.value;
+      const n = raw === "" || Number.isNaN(+raw) ? min : clamp(+raw, min, max);
+      setText(String(n));
+      onChange(n);
+    },
     style: {
       width: 96,
       height: 52,
@@ -1426,7 +1518,7 @@ function NumberControl({
       color: C.ink
     }
   }), /*#__PURE__*/React.createElement("button", {
-    onClick: () => onChange(value + step),
+    onClick: () => onChange(clamp(value + step, min, max)),
     style: {
       width: 48,
       height: 52,
@@ -1632,9 +1724,10 @@ function KaufBlock({
   if (r.isCustom || r.needsPrebook) {
     return /*#__PURE__*/React.createElement("div", {
       style: {
-        background: C.greenTint,
+        background: C.white,
         borderRadius: 16,
-        border: `1px solid ${C.green}`,
+        border: `2px solid ${C.green}`,
+        boxShadow: "0 8px 30px rgba(83,231,181,0.18)",
         padding: 24,
         textAlign: "center"
       }
@@ -1767,7 +1860,7 @@ function RecCard({
     style: {
       fontSize: 13,
       fontWeight: 700,
-      color: C.mute,
+      color: highlight ? C.greenText : C.mute,
       textTransform: "uppercase",
       letterSpacing: 0.5
     }
@@ -1798,25 +1891,30 @@ function RecCard({
     style: {
       textAlign: "right"
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, r.isCustom ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 22,
+      fontWeight: 900,
+      color: C.greenText
+    }
+  }, "Individuelles Angebot") : /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 28,
       fontWeight: 900,
       color: C.ink
     }
-  }, r.isCustom && /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 15,
-      fontWeight: 600,
-      color: C.mute
-    }
-  }, "ca. "), euro(r.totalMonthly), /*#__PURE__*/React.createElement("span", {
+  }, euro(r.effectiveMonthly), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 14,
       fontWeight: 600,
       color: C.mute
     }
-  }, " / Monat")), r.contractMonths > 1 ? /*#__PURE__*/React.createElement("div", {
+  }, " / Monat")), r.isCustom ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: C.mute
+    }
+  }, "Preis auf Anfrage") : r.contractMonths > 1 ? /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 13,
       color: C.mute
@@ -1826,7 +1924,53 @@ function RecCard({
       fontSize: 13,
       color: C.mute
     }
-  }, "monatlich zahlbar"))), showBreakdown && /*#__PURE__*/React.createElement("div", {
+  }, "monatlich zahlbar"))), !r.isCustom && r.contractMonths > 1 && r.prebookedCost > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 14,
+      paddingTop: 14,
+      borderTop: `1px dashed ${C.line}`,
+      fontSize: 13
+    }
+  }, r.costLines.map((l, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "2px 0",
+      color: C.grey
+    }
+  }, /*#__PURE__*/React.createElement("span", null, l.label, " \xD7 ", r.contractMonths, " Monate"), /*#__PURE__*/React.createElement("span", null, euro(l.amount * r.contractMonths)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "2px 0",
+      color: C.grey
+    }
+  }, /*#__PURE__*/React.createElement("span", null, r.prebookedBundles, "\xD7 ", r.tier.bundleSize, "er-Credit-Bundle (einmalig)"), /*#__PURE__*/React.createElement("span", null, euro(r.prebookedCost))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      marginTop: 6,
+      paddingTop: 6,
+      borderTop: `1px dashed ${C.line}`,
+      fontWeight: 800,
+      color: C.ink
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Gesamt ", r.contractLabel), /*#__PURE__*/React.createElement("span", null, euro(r.contractTotal))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8,
+      fontSize: 12,
+      color: C.mute
+    }
+  }, "Die Extra-Credits sind einmalig f\xE4llig und gelten f\xFCr die gesamte gew\xE4hlte Vertragslaufzeit.")), showBreakdown && (r.isCustom ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 18,
+      paddingTop: 16,
+      borderTop: `1px solid ${C.line}`,
+      fontSize: 13,
+      color: C.mute
+    }
+  }, "Kein Fixpreis \u2013 wir stimmen die Konditionen individuell mit dir ab.") : /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 18,
       paddingTop: 16,
@@ -1886,7 +2030,37 @@ function RecCard({
     style: {
       fontWeight: 900
     }
-  }, euro(r.totalMonthly))), /*#__PURE__*/React.createElement("div", {
+  }, euro(r.totalMonthly))), r.oneTimeLines.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12,
+      paddingTop: 12,
+      borderTop: `1px dashed ${C.line}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: C.mute,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      marginBottom: 6
+    }
+  }, "Einmalig bei Vertragsstart"), r.oneTimeLines.map((l, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      fontSize: 14,
+      padding: "3px 0",
+      color: C.grey
+    }
+  }, /*#__PURE__*/React.createElement("span", null, l.label), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      whiteSpace: "nowrap",
+      marginLeft: 12
+    }
+  }, euro(l.amount)))))), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 18,
       background: C.greenTint,
@@ -1985,8 +2159,7 @@ function RecCard({
   }, subnote));
 }
 function fmtCredits(n) {
-  const r = Math.round(n * 10) / 10;
-  return Number.isInteger(r) ? `${r}` : r.toFixed(1).replace(".", ",");
+  return `${Math.ceil(n)}`;
 }
 function Stat({
   value,
@@ -2080,21 +2253,50 @@ root.render(React.createElement(AirteamFlatrateRechner));</script>
   // Höhen-Reporter für iframe-Einbettung: meldet die aktuelle Höhe an die Elternseite,
   // damit sich der iframe automatisch anpasst (kein doppelter Scrollbalken).
   (function () {
+    var lastH = 0;
     function report() {
       var h = Math.max(
         document.body.scrollHeight, document.documentElement.scrollHeight,
         document.body.offsetHeight, document.documentElement.offsetHeight
       );
-      if (window.parent && window.parent !== window) {
+      // Nur senden, wenn sich die Höhe wirklich geändert hat – jede Nachricht kann die
+      // Elternseite dazu bringen, den iframe neu zu positionieren/scrollen, auch wenn
+      // sich nichts geändert hat. Weniger Nachrichten = weniger ungewollte Sprünge.
+      if (h !== lastH && window.parent && window.parent !== window) {
+        lastH = h;
         window.parent.postMessage({ airteamHeight: h }, '*');
       }
     }
+    // So früh wie möglich melden (nicht erst bei 'load', das kann u.a. auf Bilder warten)
+    if (document.readyState === 'complete' || document.readyState === 'interactive') report();
+    document.addEventListener('DOMContentLoaded', report);
     window.addEventListener('load', report);
     window.addEventListener('resize', report);
     // Klicks im Rechner ändern die Höhe (Ergebnis erscheint etc.) → kurz danach neu melden
     document.addEventListener('click', function () { setTimeout(report, 150); });
-    // Sicherheitsnetz: die ersten Sekunden regelmäßig melden, während React rendert
+    // Sicherheitsnetz: die ersten Sekunden regelmäßig prüfen, während React/Fonts noch laden
+    // (report() selbst sendet nur bei tatsächlicher Änderung)
     var n = 0, iv = setInterval(function () { report(); if (++n > 20) clearInterval(iv); }, 300);
+
+    // Für React zugänglich machen: direkt nach einem Schritt-Wechsel (z.B. "Details anzeigen")
+    // sofort (nächster Frame) neu messen, statt auf den generischen Klick-Timeout zu warten –
+    // reduziert das Zeitfenster, in dem die Elternseite noch die alte (kurze) Höhe kennt.
+    window.__airteamReportNow = function () {
+      requestAnimationFrame(function () { requestAnimationFrame(report); });
+    };
+    // Explizite Bitte an die Elternseite, den iframe nach oben ins Sichtfeld zu scrollen –
+    // wichtig beim Wechsel zu Schritt 2, weil die Ergebnis-Ansicht deutlich länger ist als
+    // Schritt 1 und der Klick-Punkt (Button unten in Schritt 1) sonst dazu führen kann, dass
+    // der Browser die Scroll-Position hält und die Empfehlung oben aus dem Sichtfeld rutscht.
+    // WICHTIG: Das greift nur, wenn die einbettende Website auf diese Nachricht reagiert
+    // (z.B. per window.addEventListener('message', ...) und anschließendem
+    // iframe.scrollIntoView({behavior:'smooth', block:'start'})) – das ist außerhalb dieser
+    // Datei und muss auf der Website-Seite ergänzt werden, falls noch nicht vorhanden.
+    window.__airteamRequestScrollTop = function () {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ airteamScrollToTop: true }, '*');
+      }
+    };
   })();
 </script>
 
