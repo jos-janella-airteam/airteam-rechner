@@ -7,7 +7,7 @@
   html { overflow-anchor: none; }
   input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   input[type=number] { -moz-appearance: textfield; }
-  button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #0E6B50; outline-offset: 2px; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #22282A; outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style></head>
 <body><div id="root"></div>
@@ -425,22 +425,20 @@ const STRIPE_LINKS = {
     biennial: "https://buy.stripe.com/6oUfZifvRgRPgo7d7ndAk1d"
   },
   fast: {
-    monthly: null,
-    annual: null,
-    biennial: null
+    monthly: "https://buy.stripe.com/cNi14o83pdFDgo78R7dAk12",
+    annual: "https://buy.stripe.com/4gM28serNatrb3NaZfdAk18",
+    biennial: "https://buy.stripe.com/cNi3cwbfB453efZ8R7dAk14"
   },
-  // folgt
   pro: {
-    monthly: null,
-    annual: null,
-    biennial: null
+    monthly: "https://buy.stripe.com/7sYfZiabxfNLdbV6IZdAk15",
+    annual: "https://buy.stripe.com/7sY9AU0AX9pnfk35EVdAk16",
+    biennial: "https://buy.stripe.com/14A14o6ZlcBz2xh8R7dAk17"
   },
-  // folgt
   max: {
-    monthly: null,
+    monthly: "https://buy.stripe.com/dR629M7y4cqj0TK8wB",
     annual: null,
     biennial: null
-  } // folgt
+  } // 1-Jahres-/2-Jahres-Link für Max Fusion folgt noch
   // ultra: kein Stripe-Produkt – immer individuelles Angebot
 };
 
@@ -715,8 +713,8 @@ const C = {
   // Airteam Green – Akzent, Highlights, Flächen, Text auf Dunkel
   greenDark: "#2BC192",
   // abgedunkeltes Grün für Slider/Tracks
-  greenText: "#0E6B50",
-  // sattes Grün, lesbar als Text auf hellem Grund
+  greenText: "#22282A",
+  // war dunkelgrün, jetzt Schwarz (wie C.ink) – kein dunkles Grün mehr als Textfarbe im CI
   ink: "#22282A",
   // Airteam Black – primäre Flächen, Buttons, Überschriften
   grey: "#3F4448",
@@ -844,7 +842,7 @@ function FlatrateRechner({
       fontSize: 13,
       fontWeight: 800,
       letterSpacing: 1.5,
-      color: C.greenText,
+      color: C.ink,
       textTransform: "uppercase"
     }
   }, "Airteam Fusion"), /*#__PURE__*/React.createElement("h1", {
@@ -1871,7 +1869,6 @@ function RecCard({
       fontSize: 13,
       fontWeight: 700,
       color: highlight ? C.greenText : C.mute,
-      textTransform: "uppercase",
       letterSpacing: 0.5
     }
   }, label), /*#__PURE__*/React.createElement("div", {
@@ -1950,6 +1947,14 @@ function RecCard({
       color: C.grey
     }
   }, /*#__PURE__*/React.createElement("span", null, l.label, " \xD7 ", r.contractMonths, " Monate"), /*#__PURE__*/React.createElement("span", null, euro(l.amount * r.contractMonths)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "2px 0 6px",
+      color: C.mute,
+      fontSize: 12
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "davon enthalten: ", r.tier.credits, " Credits/Monat")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       justifyContent: "space-between",
@@ -2264,30 +2269,30 @@ const STARTER_SETS = [{
   id: "fast",
   name: "Fast Fusion Starter Set",
   drone: "DJI Mini-Klasse",
-  match: "Ausschließlich Einfamilienhäuser bis 1.000 m²",
+  match: "Ausschließlich Einfamilienhäuser bis 500 m²",
   desc: "Der ideale Einstieg für Betriebe, die überwiegend Einfamilienhäuser aufmessen.",
-  url: "https://www.airteam.ai/shop/fast-fusion-starterset"
+  url: "https://www.airteam.ai/preise/starter-sets/fast-fusion"
 }, {
   id: "pro",
   name: "Pro Fusion Starter Set",
   drone: "DJI Mavic-Klasse",
   match: "Meist Einfamilienhäuser, manchmal kleinere Gewerbeflächen bis 1.500 m²",
   desc: "Für Betriebe mit gemischtem Portfolio aus Wohn- und kleineren Gewerbeobjekten.",
-  url: "https://www.airteam.ai/shop/pro-fusion-starter-set"
+  url: "https://www.airteam.ai/preise/starter-sets/pro-fusion"
 }, {
   id: "max",
   name: "Max Fusion Starter Set",
   drone: "DJI Matrice-Klasse (mit RTK)",
-  match: "Gewerbliche Dachflächen oder Fassaden mit mehr als 1.000 m²",
+  match: "Gewerbliche Dachflächen und Fassaden ab 1.500 m²",
   desc: "Für große, gewerbliche Objekte mit höchsten Genauigkeitsanforderungen.",
-  url: "https://www.airteam.ai/shop/max-fusion-starter-set"
+  url: "https://www.airteam.ai/preise/starter-sets/max-fusion"
 }, {
   id: "thermal",
   name: "Thermal Fusion Starter Set",
   drone: "DJI Matrice Thermal",
   match: "Vermessung aller Gebäude inkl. thermischer Inspektion",
   desc: "Das Rundum-Set mit Wärmebild – für Vermessung und thermische Gebäudeinspektion in einem.",
-  url: "https://www.airteam.ai/shop/thermal-fusion-starter-set"
+  url: "https://www.airteam.ai/preise/starter-sets/thermal-fusion"
 }];
 
 // =================================================================
@@ -2296,7 +2301,6 @@ const STARTER_SETS = [{
 // =================================================================
 function AirteamPaketFinder() {
   const [mode, setMode] = useState(null); // null | "flatrate" | "starter"
-  const [starterChoice, setStarterChoice] = useState(null); // Index in STARTER_SETS
 
   // Wenn der Kunde eine Drohne hat → direkt in den bestehenden Flatrate-Rechner
   if (mode === "flatrate") {
@@ -2332,15 +2336,7 @@ function AirteamPaketFinder() {
     style: {
       marginBottom: 24
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 13,
-      fontWeight: 800,
-      letterSpacing: 1.5,
-      color: C.greenText,
-      textTransform: "uppercase"
-    }
-  }, "Airteam"), /*#__PURE__*/React.createElement("h1", {
+  }, /*#__PURE__*/React.createElement("h1", {
     style: {
       fontSize: 30,
       fontWeight: 900,
@@ -2397,7 +2393,7 @@ function AirteamPaketFinder() {
       window.scrollTo(0, 0);
     },
     highlight: true
-  })))), mode === "starter" && starterChoice === null && /*#__PURE__*/React.createElement("div", {
+  })))), mode === "starter" && /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexDirection: "column",
@@ -2435,20 +2431,21 @@ function AirteamPaketFinder() {
       textAlign: "center",
       marginBottom: 22
     }
-  }, "(Grundfl\xE4che)"), /*#__PURE__*/React.createElement("div", {
+  }, "(Grundfl\xE4che) \u2013 f\xFChrt direkt zur passenden Produktseite"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexDirection: "column",
       gap: 12
     }
-  }, STARTER_SETS.map((s, i) => /*#__PURE__*/React.createElement("button", {
+  }, STARTER_SETS.map(s => /*#__PURE__*/React.createElement("a", {
     key: s.id,
-    onClick: () => {
-      setStarterChoice(i);
-      window.scrollTo(0, 0);
-    },
+    href: s.url,
+    target: "_blank",
+    rel: "noopener noreferrer",
     style: {
+      display: "block",
       textAlign: "left",
+      textDecoration: "none",
       background: C.white,
       border: `1px solid ${C.line}`,
       borderRadius: 12,
@@ -2460,138 +2457,98 @@ function AirteamPaketFinder() {
     onMouseLeave: e => e.currentTarget.style.borderColor = C.line
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontWeight: 700,
-      fontSize: 15,
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "baseline",
+      gap: 12,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 800,
+      fontSize: 16,
       color: C.ink
     }
-  }, s.match)))))), mode === "starter" && starterChoice !== null && /*#__PURE__*/React.createElement("div", {
+  }, s.name), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: C.greenText
+    }
+  }, "Ansehen \u2192")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      fontSize: 14,
+      color: C.grey,
+      marginTop: 4
+    }
+  }, s.match))), /*#__PURE__*/React.createElement("a", {
+    href: DEMO_URL_FINDER,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    style: {
+      display: "block",
+      textAlign: "left",
+      textDecoration: "none",
+      background: C.white,
+      border: `1px dashed ${C.line}`,
+      borderRadius: 12,
+      padding: "16px 18px",
+      cursor: "pointer",
+      transition: "border-color .15s"
+    },
+    onMouseEnter: e => e.currentTarget.style.borderColor = C.green,
+    onMouseLeave: e => e.currentTarget.style.borderColor = C.line
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
-      flexDirection: "column",
-      gap: 16
+      justifyContent: "space-between",
+      alignItems: "baseline",
+      gap: 12,
+      flexWrap: "wrap"
     }
-  }, /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 800,
+      fontSize: 16,
+      color: C.ink
+    }
+  }, "Nichts davon passt?"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: C.greenText
+    }
+  }, "Kontakt \u2192")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      fontSize: 14,
+      color: C.grey,
+      marginTop: 4
+    }
+  }, "Sprich mit unserem Team \xFCber deine individuelle Anfrage"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: C.mute,
+      marginTop: 4,
+      textAlign: "center"
+    }
+  }, "Schon eine Drohne? ", /*#__PURE__*/React.createElement("button", {
     onClick: () => {
-      setStarterChoice(null);
+      setMode("flatrate");
       window.scrollTo(0, 0);
     },
     style: {
-      alignSelf: "flex-start",
       background: "none",
       border: "none",
-      color: C.mute,
+      color: C.greenText,
       fontWeight: 700,
       cursor: "pointer",
-      fontSize: 14,
-      padding: 0
+      fontSize: 12,
+      padding: 0,
+      textDecoration: "underline"
     }
-  }, "\u2190 Andere Geb\xE4udegr\xF6\xDFe w\xE4hlen"), (() => {
-    const s = STARTER_SETS[starterChoice];
-    return /*#__PURE__*/React.createElement("div", {
-      style: {
-        background: C.white,
-        borderRadius: 16,
-        border: `2px solid ${C.green}`,
-        padding: 28,
-        position: "relative",
-        boxShadow: "0 8px 30px rgba(83,231,181,0.18)"
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        position: "absolute",
-        top: -12,
-        left: 24,
-        background: C.green,
-        color: C.ink,
-        fontSize: 12,
-        fontWeight: 800,
-        padding: "4px 12px",
-        borderRadius: 20,
-        textTransform: "uppercase",
-        letterSpacing: 0.5
-      }
-    }, "Empfehlung"), /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 13,
-        fontWeight: 700,
-        color: C.mute,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-        marginBottom: 4
-      }
-    }, "Dein passendes Starter-Set"), /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 28,
-        fontWeight: 900,
-        color: C.ink,
-        marginBottom: 8
-      }
-    }, s.name), /*#__PURE__*/React.createElement("p", {
-      style: {
-        fontSize: 15,
-        color: C.grey,
-        margin: "0 0 6px",
-        lineHeight: 1.5
-      }
-    }, s.desc), /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 14,
-        color: C.mute,
-        marginBottom: 20
-      }
-    }, "Enthaltene Drohne: ", s.drone, " \xB7 inkl. Zubeh\xF6r, Schulung, Software & Support"), /*#__PURE__*/React.createElement("div", {
-      style: {
-        background: C.greenTint,
-        borderRadius: 12,
-        padding: "14px 16px",
-        fontSize: 14,
-        color: C.grey,
-        marginBottom: 20
-      }
-    }, "Passt zu: ", s.match), /*#__PURE__*/React.createElement("div", {
-      style: {
-        display: "flex",
-        gap: 12,
-        flexWrap: "wrap",
-        alignItems: "center"
-      }
-    }, /*#__PURE__*/React.createElement("a", {
-      href: s.url,
-      target: "_blank",
-      rel: "noopener noreferrer",
-      style: {
-        display: "inline-block",
-        background: C.green,
-        color: C.ink,
-        textDecoration: "none",
-        borderRadius: 14,
-        padding: "16px 28px",
-        fontSize: 17,
-        fontWeight: 800
-      }
-    }, s.name, " ansehen \u2192")), /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 12,
-        color: C.mute,
-        marginTop: 14
-      }
-    }, "Alle Details, Zubeh\xF6r und der Kauf findest du auf der Produktseite. Sobald du deine Drohne hast, findest du mit unserem Flatrate-Rechner das passende Abo. ", /*#__PURE__*/React.createElement("button", {
-      onClick: () => {
-        setMode("flatrate");
-        window.scrollTo(0, 0);
-      },
-      style: {
-        background: "none",
-        border: "none",
-        color: C.greenText,
-        fontWeight: 700,
-        cursor: "pointer",
-        fontSize: 12,
-        padding: 0,
-        textDecoration: "underline"
-      }
-    }, "Flatrate schon jetzt ansehen")));
-  })())));
+  }, "Direkt zum Flatrate-Rechner"))))));
 }
 function BigChoice({
   label,

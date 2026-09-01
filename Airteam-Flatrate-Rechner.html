@@ -7,7 +7,7 @@
   html { overflow-anchor: none; }
   input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   input[type=number] { -moz-appearance: textfield; }
-  button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #0E6B50; outline-offset: 2px; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #22282A; outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style></head>
 <body><div id="root"></div>
@@ -425,22 +425,20 @@ const STRIPE_LINKS = {
     biennial: "https://buy.stripe.com/6oUfZifvRgRPgo7d7ndAk1d"
   },
   fast: {
-    monthly: null,
-    annual: null,
-    biennial: null
+    monthly: "https://buy.stripe.com/cNi14o83pdFDgo78R7dAk12",
+    annual: "https://buy.stripe.com/4gM28serNatrb3NaZfdAk18",
+    biennial: "https://buy.stripe.com/cNi3cwbfB453efZ8R7dAk14"
   },
-  // folgt
   pro: {
-    monthly: null,
-    annual: null,
-    biennial: null
+    monthly: "https://buy.stripe.com/7sYfZiabxfNLdbV6IZdAk15",
+    annual: "https://buy.stripe.com/7sY9AU0AX9pnfk35EVdAk16",
+    biennial: "https://buy.stripe.com/14A14o6ZlcBz2xh8R7dAk17"
   },
-  // folgt
   max: {
-    monthly: null,
+    monthly: "https://buy.stripe.com/dR629M7y4cqj0TK8wB",
     annual: null,
     biennial: null
-  } // folgt
+  } // 1-Jahres-/2-Jahres-Link für Max Fusion folgt noch
   // ultra: kein Stripe-Produkt – immer individuelles Angebot
 };
 
@@ -715,8 +713,8 @@ const C = {
   // Airteam Green – Akzent, Highlights, Flächen, Text auf Dunkel
   greenDark: "#2BC192",
   // abgedunkeltes Grün für Slider/Tracks
-  greenText: "#0E6B50",
-  // sattes Grün, lesbar als Text auf hellem Grund
+  greenText: "#22282A",
+  // war dunkelgrün, jetzt Schwarz (wie C.ink) – kein dunkles Grün mehr als Textfarbe im CI
   ink: "#22282A",
   // Airteam Black – primäre Flächen, Buttons, Überschriften
   grey: "#3F4448",
@@ -834,7 +832,7 @@ function AirteamFlatrateRechner() {
       fontSize: 13,
       fontWeight: 800,
       letterSpacing: 1.5,
-      color: C.greenText,
+      color: C.ink,
       textTransform: "uppercase"
     }
   }, "Airteam Fusion"), /*#__PURE__*/React.createElement("h1", {
@@ -1861,7 +1859,6 @@ function RecCard({
       fontSize: 13,
       fontWeight: 700,
       color: highlight ? C.greenText : C.mute,
-      textTransform: "uppercase",
       letterSpacing: 0.5
     }
   }, label), /*#__PURE__*/React.createElement("div", {
@@ -1940,6 +1937,14 @@ function RecCard({
       color: C.grey
     }
   }, /*#__PURE__*/React.createElement("span", null, l.label, " \xD7 ", r.contractMonths, " Monate"), /*#__PURE__*/React.createElement("span", null, euro(l.amount * r.contractMonths)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "2px 0 6px",
+      color: C.mute,
+      fontSize: 12
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "davon enthalten: ", r.tier.credits, " Credits/Monat")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       justifyContent: "space-between",
